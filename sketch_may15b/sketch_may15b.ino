@@ -8,18 +8,24 @@
 #include <NoDelay.h>
 
 // Red y contrasena
-char* ssid = "MEGACABLE-54G-44AB";
+char* ssid = "MEGACABLE-2.4G-44AB";
 const char* password = "kXbHaPf52m";
 
 // Puerto del servidor
 AsyncWebServer server(80);
 
 // Pines
-const unsigned int PIN_LED = 13;            // LED estado principal
-const unsigned int PIN_LED_NO_OBJETO = 12;  // LED sin objeto detectado
-const unsigned int PIN_TRIGGER = 2;         // Trigger sensor ultrasónico
-const unsigned int PIN_ECHO = 4;            // Echo sensor ultrasónico
-const unsigned int PIN_SERVO = 22;          // Servo motor
+const unsigned int PIN_LED = 18;           // LED estado principal
+const unsigned int PIN_LED_NO_OBJETO = 5;  // LED sin objeto detectado
+const unsigned int PIN_TRIGGER = 2;        // Trigger sensor ultrasónico
+const unsigned int PIN_ECHO = 4;           // Echo sensor ultrasónico
+const unsigned int PIN_SERVO = 22;         // Servo motor
+const unsigned int PIN_LED_FOT = 21;
+const unsigned int PIN_FOT = 34;
+
+const unsigned ADC_VALORES = 4096;
+const unsigned NIVEL_ON = ADC_VALORES / 5.0;
+const unsigned NIVEL_OFF = 2.0 * ADC_VALORES / 5.0;
 
 // Constantes
 const int DISTANCIA_MAX = 200;          // Distancia máxima en cm
@@ -33,6 +39,13 @@ typedef enum {
   LED_ENCENDIDO
 } estadoLed;
 estadoLed edoLed;
+
+// Estados del LED_FOT
+typedef enum {
+  LED_FOT_APAGADO,
+  LED_FOT_ENCENDIDO
+} estadoLed_FOT;
+estadoLed_FOT edoLed_FOT;
 
 // Objetos globales
 noDelay pausa(PAUSA);
@@ -55,7 +68,9 @@ void setup() {
   Serial.begin(BAUD_RATE);
   pinMode(PIN_LED, OUTPUT);
   pinMode(PIN_LED_NO_OBJETO, OUTPUT);
+  pinMode(PIN_LED_FOT, OUTPUT);
   apagaLED();
+  apagaLED_FOT();
 
   servo.attach(PIN_SERVO);
   delay(100);
@@ -68,6 +83,22 @@ void setup() {
 void loop() {
   if (pausa.update()) {
     int distancia = obtenDistancia();
+
+    // Lee y digitaliza el valor del voltaje en la
+    // fotoresistencia
+    unsigned valorADC = analogRead(PIN_FOT);
+    Serial.print("Intensidad de luz (0 - 4095): ");
+    Serial.println(valorADC);
+    // Prender/apagar el LED
+    switch (edoLed_FOT) {
+      case LED_APAGADO:
+        if (valorADC <= NIVEL_ON)
+          enciendeLED_FOT();
+        break;
+      case LED_ENCENDIDO:
+        if (valorADC >= NIVEL_OFF)
+          apagaLED_FOT();
+    }
 
     switch (edoLed) {
       case LED_APAGADO:
@@ -106,6 +137,20 @@ void enciendeLED() {
   digitalWrite(PIN_LED, HIGH);
   edoLed = LED_ENCENDIDO;
   servo.write(90);
+}
+
+void apagaLED_FOT() {
+  digitalWrite(PIN_LED_FOT, LOW);
+  edoLed_FOT = LED_FOT_APAGADO;
+  Serial.println("LED_FOT apagado");
+}
+
+void enciendeLED_FOT() {
+  // Enciende el LED
+  digitalWrite(PIN_LED_FOT, HIGH);
+  // Actualiza la variable que guarda el estado del LED
+  edoLed_FOT = LED_FOT_ENCENDIDO;
+  Serial.println("LED_FOT encendido");
 }
 
 void conectaRedWiFi(const char* ssid, const char* password) {
