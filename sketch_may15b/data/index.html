@@ -1,11 +1,15 @@
-<meta name="viewport" content="width=device-width, initial-scale=1">
 <!DOCTYPE html>
 <html lang="es">
+
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
   <title>Estacionamiento Automático</title>
   <link rel="stylesheet" href="estilos.css">
 </head>
+
+
 <body>
   <h1>Estacionamiento</h1>
 
@@ -13,12 +17,33 @@
     Puerta: <span id="estadoPuerta">CARGANDO...</span>
   </div>
 
+  <div class="poste-luz">
+    Poste de luz: <span id="estadoLuz">CARGANDO...</span>
+  </div>
+  <div class="fotoresistencia">
+    Fotoresistencia: <span id="fotoValor">CARGANDO...</span><br>
+    
+    <label for="umbralInput">Umbral:</label>
+    <input type="number" id="umbralInput" min="0" max="4095" title="Ingrese el valor del umbral"
+      placeholder="Valor de umbral">
+    <button onclick="actualizarUmbral()">Actualizar Umbral</button>
+    
+  </div>
+
+
   <div class="lugares">
     <div class="lugar">Lugar 1: VACÍO</div>
     <div class="lugar">Lugar 2: VACÍO</div>
     <div class="lugar">Lugar 3: VACÍO</div>
   </div>
 
+<div class="control-bloqueo">
+  <label for="bloqueoEntrada">Bloquear entrada:</label>
+  <input type="checkbox" id="bloqueoEntrada" title="Bloquear entrada">
+</div>
+
+
   <script src="sincroniza.js"></script>
 </body>
+
 </html>

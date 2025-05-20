@@ -19,19 +19,36 @@ const unsigned int PIN_LED = 18;           // LED estado principal
 const unsigned int PIN_LED_NO_OBJETO = 5;  // LED sin objeto detectado
 const unsigned int PIN_TRIGGER = 2;        // Trigger sensor ultrasónico
 const unsigned int PIN_ECHO = 4;           // Echo sensor ultrasónico
-const unsigned int PIN_SERVO = 22;         // Servo motor
+const unsigned int PIN_SERVO = 35;         // Servo motor
 const unsigned int PIN_LED_FOT = 21;
 const unsigned int PIN_FOT = 34;
+const int PIN_LUGAR_1 = 26;
+const int PIN_LUGAR_2 = 25;
+const int PIN_LUGAR_3 = 33;
+
+const int PIN_SENSOR_IR = 32;  // Sensor infrarrojo
+bool puertaAbierta = false;
+
 
 const unsigned ADC_VALORES = 4096;
 const unsigned NIVEL_ON = ADC_VALORES / 5.0;
 const unsigned NIVEL_OFF = 2.0 * ADC_VALORES / 5.0;
+bool luzEncendida = false;
+unsigned int umbralFotoresistencia = 50;  // Valor inicial editable por el usuario
+unsigned int valorActualFotoresistencia = 0;
 
 // Constantes
 const int DISTANCIA_MAX = 200;          // Distancia máxima en cm
 const int DISTANCIA_ALERTA = 15;        // Umbral de alerta en cm
 const long PAUSA = 1000;                // Intervalo entre mediciones
 const unsigned int BAUD_RATE = 115200;  // Velocidad puerto serie
+
+
+
+bool lugar1Ocupado = false;
+bool lugar2Ocupado = false;
+bool lugar3Ocupado = false;
+
 
 // Estados del LED
 typedef enum {
@@ -47,11 +64,22 @@ typedef enum {
 } estadoLed_FOT;
 estadoLed_FOT edoLed_FOT;
 
+enum ModoPaso {
+  MODO_NINGUNO,
+  MODO_ENTRADA_DETECCION,  // Detectado en el ultrasónico
+  MODO_ENTRADA_ESPERA_IR,  // Esperamos cruce del IR
+  MODO_SALIDA_DETECCION,   // Detectado en el IR
+  MODO_SALIDA_ESPERA_US    // Esperamos que ultrasónico libere la zona
+};
+ModoPaso modoActual = MODO_NINGUNO;
+
+bool entradaBloqueada = false;
+
 // Objetos globales
 noDelay pausa(PAUSA);
 NewPing sonar(PIN_TRIGGER, PIN_ECHO, DISTANCIA_MAX);
 Servo servo;
-int angulo = 0;
+int angulo = 90;
 
 // Declaraciones
 int obtenDistancia();
@@ -69,12 +97,18 @@ void setup() {
   pinMode(PIN_LED, OUTPUT);
   pinMode(PIN_LED_NO_OBJETO, OUTPUT);
   pinMode(PIN_LED_FOT, OUTPUT);
+  pinMode(PIN_SENSOR_IR, INPUT);
+  pinMode(PIN_LUGAR_1, INPUT);
+  pinMode(PIN_LUGAR_2, INPUT);
+  pinMode(PIN_LUGAR_3, INPUT);
+
+
   apagaLED();
   apagaLED_FOT();
 
   servo.attach(PIN_SERVO);
   delay(100);
-  servo.write(90);
+  servo.write(0);
 
   conectaRedWiFi(ssid, password);
   inicializaLittleFS();
@@ -86,40 +120,94 @@ void loop() {
 
     // Lee y digitaliza el valor del voltaje en la
     // fotoresistencia
-    unsigned valorADC = analogRead(PIN_FOT);
-    Serial.print("Intensidad de luz (0 - 4095): ");
-    Serial.println(valorADC);
-    // Prender/apagar el LED
+    valorActualFotoresistencia = analogRead(PIN_FOT);
     switch (edoLed_FOT) {
       case LED_APAGADO:
-        if (valorADC <= NIVEL_ON)
+        if (valorActualFotoresistencia < umbralFotoresistencia) {
           enciendeLED_FOT();
+        }
         break;
       case LED_ENCENDIDO:
-        if (valorADC >= NIVEL_OFF)
+        if (valorActualFotoresistencia >= umbralFotoresistencia) {
           apagaLED_FOT();
+        }
+        break;
     }
 
-    switch (edoLed) {
-      case LED_APAGADO:
-        if (distancia <= DISTANCIA_ALERTA) {
+
+    bool objetoDetectado = distancia <= DISTANCIA_ALERTA;     // Sensor ultrasónico (entrada)
+    bool sensorIRActivo = digitalRead(PIN_SENSOR_IR) == LOW;  // Sensor IR activo cuando detecta
+
+    switch (modoActual) {
+      case MODO_NINGUNO:
+        if (!entradaBloqueada && objetoDetectado && !sensorIRActivo) {
+          Serial.println("Vehículo acercándose - Entrada");
           enciendeLED();
-          digitalWrite(PIN_LED_NO_OBJETO, LOW);
-        } else {
-          digitalWrite(PIN_LED_NO_OBJETO, HIGH);
+          modoActual = MODO_ENTRADA_ESPERA_IR;
+        } else if (sensorIRActivo && !objetoDetectado) {
+          Serial.println("Vehículo iniciando salida");
+          enciendeLED();
+          modoActual = MODO_SALIDA_ESPERA_US;
         }
         break;
 
-      case LED_ENCENDIDO:
-        if (distancia > DISTANCIA_ALERTA) {
+      case MODO_ENTRADA_ESPERA_IR:
+        if (sensorIRActivo) {
+          Serial.println("Vehículo terminó de entrar");
           apagaLED();
-          digitalWrite(PIN_LED_NO_OBJETO, HIGH);
-        } else {
-          digitalWrite(PIN_LED_NO_OBJETO, LOW);
+          registrarEntrada();
+          modoActual = MODO_NINGUNO;
+        }
+        break;
+
+      case MODO_SALIDA_ESPERA_US:
+        if (!objetoDetectado) {
+          Serial.println("Vehículo terminó de salir");
+          apagaLED();
+          registrarSalida();
+          modoActual = MODO_NINGUNO;
         }
         break;
     }
   }
+
+  lugar1Ocupado = digitalRead(PIN_LUGAR_1) == LOW;
+  lugar2Ocupado = digitalRead(PIN_LUGAR_2) == LOW;
+  lugar3Ocupado = digitalRead(PIN_LUGAR_3) == LOW;
+}
+
+void registrarEntrada() {
+  if (!lugar1Ocupado) {
+    lugar1Ocupado = true;
+  } else if (!lugar2Ocupado) {
+    lugar2Ocupado = true;
+  } else if (!lugar3Ocupado) {
+    lugar3Ocupado = true;
+  } else {
+    Serial.println("¡Estacionamiento lleno!");
+  }
+}
+
+bool estacionamientoLleno() {
+  return lugar1Ocupado && lugar2Ocupado && lugar3Ocupado;
+}
+
+void registrarSalida() {
+  // En un sistema real necesitarías saber cuál vehículo salió
+  // Aquí lo hacemos simple y liberamos el último ocupado
+  if (lugar3Ocupado) {
+    lugar3Ocupado = false;
+  } else if (lugar2Ocupado) {
+    lugar2Ocupado = false;
+  } else if (lugar1Ocupado) {
+    lugar1Ocupado = false;
+  } else {
+    Serial.println("¡No hay autos que hayan salido!");
+  }
+}
+
+bool estacionamientoVacio() {
+  return !lugar1Ocupado && !lugar2Ocupado && !lugar3Ocupado;
 }
 
 int obtenDistancia() {
@@ -130,13 +218,17 @@ int obtenDistancia() {
 void apagaLED() {
   digitalWrite(PIN_LED, LOW);
   edoLed = LED_APAGADO;
+  digitalWrite(PIN_LED_NO_OBJETO, HIGH);
   servo.write(0);
+  puertaAbierta = false;
 }
 
 void enciendeLED() {
   digitalWrite(PIN_LED, HIGH);
   edoLed = LED_ENCENDIDO;
+  digitalWrite(PIN_LED_NO_OBJETO, LOW);
   servo.write(90);
+  puertaAbierta = true;
 }
 
 void apagaLED_FOT() {
@@ -181,13 +273,48 @@ void configuraServidor() {
   server.serveStatic("/", LittleFS, "/");
 
   server.on("/", HTTP_GET, [](AsyncWebServerRequest* request) {
-    request->send(LittleFS, "/index.html", "text/html", false, processor);
+    request->send(LittleFS, "/index.html", "text/html");
+  });
+
+  server.on("/bloqueo", HTTP_POST, [](AsyncWebServerRequest* request) {
+    if (request->hasParam("activo", true)) {
+      String valor = request->getParam("activo", true)->value();
+      entradaBloqueada = (valor == "true");
+      Serial.printf("Entrada bloqueada: %s\n", entradaBloqueada ? "Sí" : "No");
+      request->send(200, "text/plain", "Estado actualizado");
+    } else {
+      request->send(400, "text/plain", "Falta parámetro");
+    }
+  });
+
+  server.on("/umbral", HTTP_POST, [](AsyncWebServerRequest* request) {
+    if (request->hasParam("valor", true)) {
+      String valorStr = request->getParam("valor", true)->value();
+      int nuevoUmbral = valorStr.toInt();
+      if (nuevoUmbral >= 0 && nuevoUmbral <= 4095) {
+        umbralFotoresistencia = nuevoUmbral;
+        Serial.printf("Nuevo umbral de fotoresistencia: %d\n", umbralFotoresistencia);
+        request->send(200, "text/plain", "Umbral actualizado correctamente");
+      } else {
+        request->send(400, "text/plain", "Valor fuera de rango");
+      }
+    } else {
+      request->send(400, "text/plain", "Falta parámetro 'valor'");
+    }
   });
 
   server.on("/estado", HTTP_GET, [](AsyncWebServerRequest* request) {
-    int distancia = obtenDistancia();
-    String estado = (distancia <= DISTANCIA_ALERTA) ? "abierta" : "cerrada";
-    request->send(200, "text/plain", estado);
+    String json = "{";
+    json += "\"puerta\":\"" + String(puertaAbierta ? "abierta" : "cerrada") + "\",";
+    json += "\"lugar1\":\"" + String(lugar1Ocupado ? "ocupado" : "vacio") + "\",";
+    json += "\"lugar2\":\"" + String(lugar2Ocupado ? "ocupado" : "vacio") + "\",";
+    json += "\"lugar3\":\"" + String(lugar3Ocupado ? "ocupado" : "vacio") + "\",";
+    json += "\"luz\":\"" + String(edoLed_FOT == LED_FOT_ENCENDIDO ? "encendida" : "apagada") + "\",";
+    json += "\"fotoValor\":" + String(analogRead(PIN_FOT)) + ",";
+    json += "\"umbral\":" + String(NIVEL_ON) + ",";
+    json += "\"bloqueado\":" + String(entradaBloqueada ? "true" : "false");
+    json += "}";
+    request->send(200, "application/json", json);
   });
 
 

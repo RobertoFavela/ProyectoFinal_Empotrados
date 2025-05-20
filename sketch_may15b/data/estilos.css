@@ -35,3 +35,20 @@ body {
     font-size: 18px;
   }
   
+  .poste-luz {
+  font-size: 24px;
+  margin: 20px 0;
+  padding: 10px;
+  background-color: #ddd;
+  display: inline-block;
+  border-radius: 10px;
+}
+
+.fotoresistencia {
+  font-size: 20px;
+  margin: 20px 0;
+  padding: 10px;
+  background-color: #eee;
+  border-radius: 10px;
+  display: inline-block;
+}
