@@ -6,12 +6,12 @@
 #include <ESP32Servo.h>
 #include <NewPing.h>
 #include <NoDelay.h>
-
+  
 // Red y contrasena
 char* ssid = "MEGACABLE-2.4G-44AB";
 const char* password = "kXbHaPf52m";
-
-// Puerto del servidor
+      
+        // Puerto del servidor
 AsyncWebServer server(80);
 
 // Pines
